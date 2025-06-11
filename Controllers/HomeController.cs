@@ -418,30 +418,61 @@ namespace AttendanceCRM.Controllers
 
         public List<AttendanceViewModel> GetAllEmployeesAttendanceRecords(string searchTerm = null)
         {
-            var query = (from a in _context.attendanceEntitie
-                         join u in _context.userMasterEntitie on a.UserId equals u.UserId
-                         orderby a.CreatedOn descending
-                         select new AttendanceViewModel
-                         {
-                             UserId = (int)a.UserId,
-                             UserName = u.UserName,
-                             CreatedOn = a.CreatedOn,
-                             PunchInTime = a.PunchInTime,
-                             PunchOutTime = a.PunchOutTime,
-                             GracePeriodTime = a.GracePeriodTime,
-                             Designation = u.Designation
-                         }).ToList();
-
-
+            var attendanceData = (from a in _context.attendanceEntitie
+                                  join u in _context.userMasterEntitie on a.UserId equals u.UserId
+                                  where a.UserId != null
+                                  group a by new { a.UserId, u.UserName, u.Designation } into g
+                                  select new AttendanceViewModel
+                                  {
+                                      UserId = g.Key.UserId.Value,
+                                      UserName = g.Key.UserName,
+                                      Designation = g.Key.Designation,
+                                      TotalWorkingDays = g.Count(), // total attendance records
+                                      PresentDays = g.Count(x => x.PunchInTime != null), // only present if punched in
+                                      AbsentDays = g.Count(x => x.PunchInTime == null),
+                                      PunchInTime = g.Where(x => x.PunchInTime != null)
+                                                     .OrderByDescending(x => x.CreatedOn)
+                                                     .Select(x => x.PunchInTime)
+                                                     .FirstOrDefault(),
+                                      PunchOutTime = g.Where(x => x.PunchOutTime != null)
+                                                      .OrderByDescending(x => x.CreatedOn)
+                                                      .Select(x => x.PunchOutTime)
+                                                      .FirstOrDefault()
+                                  }).ToList();
             if (!string.IsNullOrEmpty(searchTerm))
             {
                 searchTerm = searchTerm.ToLower();
-                query = query.Where(x =>
-                    (x.UserName ?? "").ToLower().Contains(searchTerm)
-                ).ToList();
+                attendanceData = attendanceData
+                    .Where(x => (x.UserName ?? "").ToLower().Contains(searchTerm))
+                    .ToList();
             }
+            return attendanceData.OrderByDescending(x => x.PunchInTime).ToList();
 
-            return query.OrderByDescending(x => x.CreatedOn).ToList();
+
+            //var query = (from a in _context.attendanceEntitie
+            //             join u in _context.userMasterEntitie on a.UserId equals u.UserId
+            //             orderby a.CreatedOn descending
+            //             select new AttendanceViewModel
+            //             {
+            //                 UserId = (int)a.UserId,
+            //                 UserName = u.UserName,
+            //                 CreatedOn = a.CreatedOn,
+            //                 PunchInTime = a.PunchInTime,
+            //                 PunchOutTime = a.PunchOutTime,
+            //                 GracePeriodTime = a.GracePeriodTime,
+            //                 Designation = u.Designation
+            //             }).ToList();
+
+
+            //if (!string.IsNullOrEmpty(searchTerm))
+            //{
+            //    searchTerm = searchTerm.ToLower();
+            //    query = query.Where(x =>
+            //        (x.UserName ?? "").ToLower().Contains(searchTerm)
+            //    ).ToList();
+            //}
+
+            //return query.OrderByDescending(x => x.CreatedOn).ToList();
         }
 
 

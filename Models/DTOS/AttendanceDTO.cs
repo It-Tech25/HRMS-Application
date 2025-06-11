@@ -41,6 +41,9 @@
         public int UserId { get; set; }
         public string? UserName { get; set; }
         public bool IsPunchedIn { get; set; }
+        public int TotalWorkingDays { get; set; }
+        public int PresentDays { get; set; }
+        public int AbsentDays { get; set; }
         public DateTime? PunchInTime { get; set; }
         public DateTime? PunchOutTime { get; set; }
         public string TotalWorkHours { get; set; } = "00:00:00";

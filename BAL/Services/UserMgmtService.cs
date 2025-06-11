@@ -26,7 +26,7 @@ namespace AttendanceCRM.BAL.Services
         #region USER
         public int TotalEmplyee()
         {
-            int count = _context.userMasterEntitie.Where(a => a.IsDeleted == false ).Count();
+            int count = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.EmployeeStatus==true ).Count();
             return count;
         }
 
@@ -48,12 +48,12 @@ namespace AttendanceCRM.BAL.Services
 
         public int TotalEmplyeeActive()
 		{
-			int count = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.IsActive == true).Count();
+			int count = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.EmployeeStatus==true).Count();
 			return count;
 		}
 		public int TotalEmplyeeInActive()
 		{
-			int count = _context.userMasterEntitie.Where(a => a.IsDeleted == true && a.IsActive == false).Count();
+			int count = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.EmployeeStatus==false).Count();
 			return count;
 		}
         public int TotalEmplyeeNewJoin()
@@ -115,7 +115,7 @@ namespace AttendanceCRM.BAL.Services
         public IEnumerable<UserMasterDTO> UserList(string searchTerm = null)
         {
             var query = (from sr in _context.userMasterEntitie
-                         where sr.IsDeleted == false && sr.IsActive == true
+                         where sr.IsDeleted == false && sr.EmployeeStatus==true
                          select new UserMasterDTO
                          {
                              UserId = sr.UserId,
@@ -162,7 +162,7 @@ namespace AttendanceCRM.BAL.Services
 
             var query = (from sr in _context.userMasterEntitie
                       
-                       where (sr.IsDeleted == false && sr.IsActive==true)
+                       where (sr.IsDeleted == false && sr.EmployeeStatus==true)
 
 
                        select new UserMasterDTO
@@ -206,7 +206,7 @@ namespace AttendanceCRM.BAL.Services
 
             var query = (from sr in _context.userMasterEntitie
 
-                       where (sr.IsDeleted == true && sr.IsActive == false)
+                       where (sr.IsDeleted == false && sr.EmployeeStatus==false)
 
 
                        select new UserMasterDTO
@@ -357,7 +357,7 @@ namespace AttendanceCRM.BAL.Services
             try
             {
 
-                var u = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.IsActive == true && a.Email == request.emailId).FirstOrDefault();
+                var u = _context.userMasterEntitie.Where(a => a.IsDeleted == false && a.IsActive == true && a.Email == request.emailId && a.EmployeeStatus==true).FirstOrDefault();
 
                 if (u == null)
                 {
