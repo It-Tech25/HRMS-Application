@@ -1,21 +1,24 @@
-﻿using AttendanceCRM.Models;
+﻿using AttendanceCRM.BAL.IServices;
+using AttendanceCRM.Models;
 using AttendanceCRM.Models.DTOS;
 using AttendanceCRM.Models.Entities;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Diagnostics;
-using Newtonsoft.Json;
-using AttendanceCRM.BAL.IServices;
 using AttendanceCRM.Utilities;
-using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
-using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using DocumentFormat.OpenXml.Bibliography;
+using DocumentFormat.OpenXml.InkML;
+using DocumentFormat.OpenXml.Spreadsheet;
+using MailKit.Search;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+using System.Diagnostics;
 using System.Drawing;
-using MailKit.Search;
+using System.Globalization;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 
 
@@ -386,10 +389,11 @@ namespace AttendanceCRM.Controllers
 
             // Sort and paginate
             var paginatedLeaves = allAttendanceRecords
-                .OrderByDescending(x => x.CreatedOn)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
+       .OrderByDescending(x => x.CreatedOn)
+       .Skip((page - 1) * pageSize)
+       .Take(pageSize)
+       .ToList();
+
 
             // Pagination metadata
             ViewBag.CurrentPage = page;
@@ -415,19 +419,19 @@ namespace AttendanceCRM.Controllers
         public List<AttendanceViewModel> GetAllEmployeesAttendanceRecords(string searchTerm = null)
         {
             var query = (from a in _context.attendanceEntitie
-                           join u in _context.userMasterEntitie on a.UserId equals u.UserId
-                           orderby u.UserName, a.CreatedOn
-                           select new AttendanceViewModel
-                           {
-                               UserId = (int)a.UserId,
-                               UserName = u.UserName,
-                               CreatedOn = a.CreatedOn,
-                               PunchInTime = a.PunchInTime,
-                               PunchOutTime = a.PunchOutTime,
-                               GracePeriodTime = a.GracePeriodTime,
-                               Designation = u.Designation,
-                             
-                           }).ToList();
+                         join u in _context.userMasterEntitie on a.UserId equals u.UserId
+                         orderby a.CreatedOn descending
+                         select new AttendanceViewModel
+                         {
+                             UserId = (int)a.UserId,
+                             UserName = u.UserName,
+                             CreatedOn = a.CreatedOn,
+                             PunchInTime = a.PunchInTime,
+                             PunchOutTime = a.PunchOutTime,
+                             GracePeriodTime = a.GracePeriodTime,
+                             Designation = u.Designation
+                         }).ToList();
+
 
             if (!string.IsNullOrEmpty(searchTerm))
             {
@@ -538,9 +542,18 @@ namespace AttendanceCRM.Controllers
             }
 
             // Query attendance records based on the selected filter
-            var records = _context.attendanceEntitie
-                .Join(_context.userMasterEntitie, a => a.UserId, u => u.UserId, (a, u) => new { a, u })
-                .Where(x => x.a.PunchInTime >= start && x.a.PunchInTime <= end)
+            var query = _context.attendanceEntitie
+             .Join(_context.userMasterEntitie, a => a.UserId, u => u.UserId, (a, u) => new { a, u })
+             .Where(x => x.a.PunchInTime >= start && x.a.PunchInTime <= end);
+
+            // Apply filter before materializing the list
+            if (userId.HasValue && userId > 0)
+            {
+                query = query.Where(x => x.a.UserId == userId.Value);
+            }
+
+            var records = query
+                .OrderBy(x => x.a.CreatedOn)
                 .Select(x => new AttendanceViewModel
                 {
                     UserId = (int)x.a.UserId,
@@ -550,21 +563,43 @@ namespace AttendanceCRM.Controllers
                     PunchOutTime = x.a.PunchOutTime,
                     GracePeriodTime = x.a.GracePeriodTime,
                     Designation = x.u.Designation,
-                });
-
-            // If a specific user is selected, filter by UserId
-            if (userId.HasValue && userId > 0)
-            {
-                records = records.Where(r => r.UserId == userId);
-            }
+                })
+                .ToList();
 
             return PartialView("_AttendanceTable", records.ToList()); // Return partial view with updated data
         }
 
+        public IActionResult GetPunchDetails(string date)
+        {
+            DateTime targetDate = DateTime.Parse(date);
+            var attendance = _context.attendanceEntitie
+                .FirstOrDefault(a => a.CreatedOn == targetDate.Date);
 
+            if (attendance == null)
+                return Json(new { success = false });
+
+            return Json(new
+            {
+                success = true,
+                punchIn = attendance.PunchInTime.HasValue ? new
+                {
+                    time = attendance.PunchInTime.Value.ToString("hh:mm tt"),
+                    selfieUrl = Url.Content($"~/UploadedImages/{attendance.SelfiePath}"),
+                    lat = attendance.Latitude,
+                    lng = attendance.Longitude
+                } : null,
+                punchOut = attendance.PunchOutTime.HasValue ? new
+                {
+                    time = attendance.PunchOutTime.Value.ToString("hh:mm tt"),
+                    selfieUrl = Url.Content($"~/UploadedImages/{attendance.PunchOutSelfiePath}"),
+                    lat = attendance.PunchOutLatitude,
+                    lng = attendance.PunchOutLongitude
+                } : null
+            });
+        }
 
         [Authorize(Policy = "EmployeeAccess")]
-        public IActionResult GetAttendanceById(int? month, int? year, DateTime? startDate, DateTime? endDate, string searchTerm, int page = 1, int pageSize = 10)
+        public IActionResult GetAttendanceById(int? month, int? year, int page = 1, int pageSize = 10)
         {
             LoginResponseModel lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
             if (lr == null)
@@ -581,27 +616,17 @@ namespace AttendanceCRM.Controllers
             }
 
             // Get filtered attendance records directly
-            var attendanceRecords = GetAttendanceByUserId(lr.userId, month, year, startDate, endDate);
+            var attendanceRecords = GetAttendanceByUserId(lr.userId, month, year);
 
             if (!attendanceRecords.Any())
             {
                 ViewBag.Message = "No attendance records found.";
             }
 
-            if (!string.IsNullOrEmpty(searchTerm))
-            {
-                searchTerm = searchTerm.ToLower().Trim();
-                attendanceRecords = attendanceRecords.Where(x =>
-                   (x.CreatedOn?.ToString("yyyy-MM-dd") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.Status ?? "").ToLower().Contains(searchTerm) ||
-                    (x.PunchInTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.PunchOutTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.GracePeriodTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm)
-                ).ToList();
-            }
+        
 
-            // Sort and paginate
-            var paginatedLeaves = attendanceRecords
+        // Sort and paginate
+        var paginatedLeaves = attendanceRecords
                 .OrderByDescending(x => x.CreatedOn)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -612,7 +637,6 @@ namespace AttendanceCRM.Controllers
             ViewBag.PageSize = pageSize;
             ViewBag.TotalItems = attendanceRecords.Count();
             ViewBag.TotalPages = (int)Math.Ceiling((double)attendanceRecords.Count() / pageSize);
-            ViewBag.SearchTerm = searchTerm;
 
             // Check if it's an AJAX request
             if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
@@ -631,10 +655,7 @@ namespace AttendanceCRM.Controllers
         public List<AttendanceEntitie> GetAttendanceByUserId(
       int userId,
       int? month = null,
-      int? year = null,
-      DateTime? startDate = null,
-      DateTime? endDate = null,
-      string searchTerm = null
+      int? year = null
   )
         {
             DateTime today = DateTime.Today;
@@ -643,17 +664,6 @@ namespace AttendanceCRM.Controllers
             DateTime defaultStartDate = today.AddDays(-7);
             DateTime defaultEndDate = today;
 
-            if (startDate.HasValue && endDate.HasValue)
-            {
-                defaultStartDate = startDate.Value;
-                defaultEndDate = endDate.Value > today ? today : endDate.Value;
-            }
-            else if (month.HasValue && year.HasValue)
-            {
-                defaultStartDate = new DateTime(year.Value, month.Value, 1);
-                defaultEndDate = new DateTime(year.Value, month.Value, DateTime.DaysInMonth(year.Value, month.Value));
-                defaultEndDate = defaultEndDate > today ? today : defaultEndDate;
-            }
 
             _context.ChangeTracker.Clear();
 
@@ -703,18 +713,7 @@ namespace AttendanceCRM.Controllers
                 }
             }
 
-            // ✅ Search across all fields (case-insensitive)
-            if (!string.IsNullOrEmpty(searchTerm))
-            {
-                searchTerm = searchTerm.ToLower();
-                result = result.Where(x =>
-                    (x.CreatedOn?.ToString("yyyy-MM-dd") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.Status ?? "").ToLower().Contains(searchTerm) ||
-                    (x.PunchInTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.PunchOutTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm) ||
-                    (x.GracePeriodTime?.ToString("hh\\:mm") ?? "").ToLower().Contains(searchTerm)
-                ).ToList();
-            }
+        
 
             return result;
         }
@@ -991,6 +990,44 @@ namespace AttendanceCRM.Controllers
             return View(leaveList);
         }
 
+        [HttpGet]
+        public IActionResult GetPunchDetails( DateTime date)
+        {
+            LoginResponseModel lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
+            if (lr == null)
+            {
+                return RedirectToAction("Login", "Authenticate");
+            }
+            var nextDate = date.Date.AddDays(1);
+
+            var punches = _context.attendanceEntitie
+                .Where(x => x.UserId == lr.userId && x.CreatedOn >= date.Date && x.CreatedOn < nextDate)
+                .FirstOrDefault();
+
+            if (punches == null)
+                return Json(new { punchIn = (object)null, punchOut = (object)null });
+
+            var result = new
+            {
+                punchIn = punches.PunchInTime != null ? new
+                {
+                    time = punches.PunchInTime.Value.ToString("hh:mm tt"),
+                    selfieUrl = punches.SelfiePath,
+                    lat = punches.Latitude,
+                    lng = punches.Longitude
+                } : null,
+
+                punchOut = punches.PunchOutTime != null ? new
+                {
+                    time = punches.PunchOutTime.Value.ToString("hh:mm tt"),
+                    selfieUrl = punches.PunchOutSelfiePath,
+                    lat = punches.PunchOutLatitude,
+                    lng = punches.PunchOutLongitude
+                } : null
+            };
+
+            return Json(result);
+        }
 
 
         public IActionResult PresentToday()
@@ -1177,19 +1214,59 @@ namespace AttendanceCRM.Controllers
         }
 
 
-
-
-
-        public class LocationModel
+        [HttpGet]
+        public async Task<IActionResult> GetTodayPunchInfo()
         {
-            public double Latitude { get; set; }
-            public double Longitude { get; set; }
+            var lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
+
+            if (lr == null)
+            {
+                return RedirectToAction("Login", "Authenticate");
+            }
+
+            var today = DateTime.Today;
+            var tomorrow = today.AddDays(1);
+
+            var punchInfo = await _context.attendanceEntitie
+                .Where(p => p.UserId == lr.userId && p.PunchInTime >= today && p.PunchInTime < tomorrow)
+                .FirstOrDefaultAsync();
+
+            if (punchInfo == null)
+            {
+                return Json(new { success = false });
+            }
+
+            // Generate map centered exactly on the GPS coordinates
+            string GenerateMapUrl(double? lat, double? lng)
+            {
+                return (lat.HasValue && lng.HasValue)
+                    ? $"https://maps.google.com/maps?q={lat.Value.ToString(CultureInfo.InvariantCulture)},{lng.Value.ToString(CultureInfo.InvariantCulture)}&hl=es&z=18&output=embed"
+                    : "";
+            }
+
+            var punchInMapUrl = GenerateMapUrl(punchInfo.Latitude, punchInfo.Longitude);
+            var punchOutMapUrl = GenerateMapUrl(punchInfo.PunchOutLatitude, punchInfo.PunchOutLongitude);
+
+            return Json(new
+            {
+                success = true,
+                punchInTime = punchInfo.PunchInTime?.ToString("hh:mm tt"),
+                punchOutTime = punchInfo.PunchOutTime?.ToString("hh:mm tt"),
+                punchInSelfie = punchInfo.SelfiePath,
+                punchOutSelfie = punchInfo.PunchOutSelfiePath,
+                punchInLocation = punchInMapUrl,
+                punchOutLocation = punchOutMapUrl
+            });
         }
+
+
+
+
         [HttpPost]
-        public async Task<IActionResult> PunchIn([FromBody] LocationModel location)
+        public async Task<IActionResult> PunchIn(IFormFile Selfie, [FromForm] double latitude, [FromForm] double longitude, [FromForm] string WorkType, string WFHReason)
         {
-            // Check if user is logged in
-            LoginResponseModel lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
+            // ✅ Check session
+            var lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
 
             if (lr == null)
             {
@@ -1201,42 +1278,63 @@ namespace AttendanceCRM.Controllers
             ViewBag.emailId = lr.emailId;
             ViewBag.userTypeName = lr.userTypeName;
 
-             //📍 Static Office GPS Coordinates
-            double officeLatitude = 17.447021636336842;
-            double officeLongitude = 78.35464083733754;
-            double allowedRadius = 100; // Allowed distance in meters
+            //// 📍 Static Office GPS Coordinates
+            //double officeLatitude = 17.447021636336842;
+            //double officeLongitude = 78.35464083733754;
+            //double allowedRadius = 800; // meters
 
-             //✅ Calculate Distance
-            double distance = GetDistance(location.Latitude, location.Longitude, officeLatitude, officeLongitude);
+            //// ✅ Distance Check
+            //double distance = GetDistance(latitude, longitude, officeLatitude, officeLongitude);
+            //if (distance > allowedRadius)
+            //{
+            //    return BadRequest(new
+            //    {
+            //        message = "⚠️ Punch-in allowed only in office premises.",
+            //        status = "warning"
+            //    });
+            //}
 
-            if (distance > allowedRadius)
+            // 📸 Save Selfie
+            string selfiePath = "";
+            if (Selfie != null && Selfie.Length > 0)
             {
-                return BadRequest(new
+                string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "selfies");
+                if (!Directory.Exists(uploadsFolder))
+                    Directory.CreateDirectory(uploadsFolder);
+
+                string uniqueFileName = Guid.NewGuid().ToString() + Path.GetExtension(Selfie.FileName);
+                string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var fileStream = new FileStream(filePath, FileMode.Create))
                 {
-                    message = "⚠️ Punch-in allowed only in office premises.",
-                    status = "warning"
-                });
+                    await Selfie.CopyToAsync(fileStream);
+                }
+
+                selfiePath = "/selfies/" + uniqueFileName;
             }
 
+            // 🕒 Grace Period Logic
             var gracePeriod = TimeSpan.FromMinutes(20);
-			 var expectedPunchInTime = DateTime.UtcNow.Date.AddHours(9).AddMinutes(30); 
-
-			string userIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
-           // string userIpAddress = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? HttpContext.Connection.RemoteIpAddress?.ToString();
-
+            var expectedPunchInTime = DateTime.UtcNow.Date.AddHours(9).AddMinutes(30);
             var punchInTime = DateTime.Now;
-			bool isWithinGracePeriod = punchInTime <= expectedPunchInTime.Add(gracePeriod);
+            int minutesLate = (int)(punchInTime - expectedPunchInTime).TotalMinutes;
+            if (minutesLate < 0) minutesLate = 0;
 
-			 var minutesLate = (int)(punchInTime - expectedPunchInTime).TotalMinutes;
-			 if (minutesLate < 0) minutesLate = 0; 
+            string userIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
 
-			var attendance = new AttendanceEntitie
+            // 💾 Save to DB
+            var attendance = new AttendanceEntitie
             {
                 UserId = lr.userId,
                 PunchInTime = punchInTime,
                 IPAddress = userIpAddress,
-				GracePeriodTime = minutesLate, 
-				IsActive = true,
+                Latitude = latitude,
+                Longitude = longitude,
+                SelfiePath = selfiePath,
+                WorkType=WorkType,
+                Reason= WFHReason,
+                GracePeriodTime = minutesLate,
+                IsActive = true,
                 IsDeleted = false,
                 CreatedOn = DateTime.Now,
                 Status = "Present",
@@ -1249,12 +1347,13 @@ namespace AttendanceCRM.Controllers
             return Ok(new
             {
                 message = "✅ Punched in successfully!",
-                status = "success",  
+                status = "success",
                 punchInTime,
-                ipAddress = userIpAddress
-			});
+                ipAddress = userIpAddress,
+                selfieUrl = selfiePath
+            });
         }
-        
+
         private double GetDistance(double lat1, double lon1, double lat2, double lon2)
         {
             double R = 6371000; 
@@ -1348,7 +1447,7 @@ namespace AttendanceCRM.Controllers
 
 
         [HttpPost]
-        public async Task<IActionResult> PunchOut()
+        public async Task<IActionResult> PunchOut(IFormFile Selfie, [FromForm] double latitude, [FromForm] double longitude,string TotalHours)
         {
             // Get logged in user from session
             LoginResponseModel lr = SessionHelper.GetObjectFromJson<LoginResponseModel>(HttpContext.Session, "loggedUser");
@@ -1361,13 +1460,33 @@ namespace AttendanceCRM.Controllers
             var attendance = await _context.attendanceEntitie
                 .Where(a => a.UserId == lr.userId && a.PunchOutTime == null)
                 .FirstOrDefaultAsync();
+            string selfiePath = "";
+            if (Selfie != null && Selfie.Length > 0)
+            {
+                string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "selfies");
+                if (!Directory.Exists(uploadsFolder))
+                    Directory.CreateDirectory(uploadsFolder);
+
+                string uniqueFileName = Guid.NewGuid().ToString() + Path.GetExtension(Selfie.FileName);
+                string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var fileStream = new FileStream(filePath, FileMode.Create))
+                {
+                    await Selfie.CopyToAsync(fileStream);
+                }
+
+                selfiePath = "/selfies/" + uniqueFileName;
+            }
 
             if (attendance == null)
             {
                 return BadRequest(new { message = "You have not punched in yet." });
             }
-
+            attendance.PunchOutLatitude = latitude;
+            attendance.PunchOutLongitude = longitude;
+            attendance.PunchOutSelfiePath = selfiePath;
             attendance.PunchOutTime = DateTime.Now;
+            attendance.TotalHours =Convert.ToDouble(TotalHours);
             attendance.ProductionDuration = (int)(attendance.PunchOutTime - attendance.PunchInTime)?.TotalMinutes;
             attendance.UpdatedOn = DateTime.Now;
             attendance.UpdatedBy = lr.userId;
@@ -1393,40 +1512,31 @@ namespace AttendanceCRM.Controllers
                 return RedirectToAction("Login", "Authenticate");
             }
 
-            ViewBag.UserId = lr.userId;
             DateTime today = DateTime.Today;
             DateTime now = DateTime.Now;
 
-            // Get the last attendance record for the user
             var attendance = await _context.attendanceEntitie
                 .Where(a => a.UserId == lr.userId)
                 .OrderByDescending(a => a.AttendanceId)
                 .FirstOrDefaultAsync();
 
-            // ✅ If no attendance record exists, allow punch-in
             if (attendance == null)
             {
                 return Ok(new { isPunchedIn = false, canPunchIn = true, totalHours = "00:00:00" });
             }
 
-            bool isPunchedIn = attendance.PunchOutTime == null;
+            bool isToday = attendance.PunchInTime?.Date == today;
+            bool isPunchedIn = attendance.PunchOutTime == null && isToday;
             bool canPunchIn = false;
             TimeSpan totalHours = TimeSpan.Zero;
 
-            DateTime lastPunchInDate = attendance.PunchInTime.Value.Date;
-            DateTime endOfDay = lastPunchInDate.AddHours(23).AddMinutes(59).AddSeconds(59);
-            TimeSpan elapsedTime = now - attendance.PunchInTime.Value;
-
-            // ✅ If last punch-in was on a different day, allow new punch-in
-            if (lastPunchInDate < today)
-            {
-                return Ok(new { isPunchedIn = false, canPunchIn = true, totalHours = "00:00:00" });
-            }
-
-            // ✅ Auto punch-out logic (after 10 hours OR day-end)
+            // Auto punch-out if exceeded time or day ends
             if (isPunchedIn)
             {
-                if (elapsedTime.TotalHours >= 10)
+                TimeSpan elapsed = now - attendance.PunchInTime.Value;
+                DateTime endOfDay = today.AddHours(23).AddMinutes(59).AddSeconds(59);
+
+                if (elapsed.TotalHours >= 10)
                 {
                     attendance.PunchOutTime = attendance.PunchInTime.Value.AddHours(10);
                 }
@@ -1435,7 +1545,6 @@ namespace AttendanceCRM.Controllers
                     attendance.PunchOutTime = endOfDay;
                 }
 
-                // ✅ Update attendance and save
                 if (attendance.PunchOutTime != null)
                 {
                     attendance.ProductionDuration = (int)(attendance.PunchOutTime - attendance.PunchInTime)?.TotalMinutes;
@@ -1449,11 +1558,13 @@ namespace AttendanceCRM.Controllers
                 }
             }
 
-            // ✅ Disable punch-in after punch-out until the next day
-            canPunchIn = !isPunchedIn && attendance.PunchOutTime == null ? false : (lastPunchInDate < today);
+            // Can punch in only if not punched in today
+            canPunchIn = !isToday || (attendance.PunchOutTime != null && !isPunchedIn);
 
-            // ✅ Calculate total work hours
-            totalHours = (attendance.PunchOutTime ?? now) - attendance.PunchInTime.Value;
+            if (isToday)
+            {
+                totalHours = (attendance.PunchOutTime ?? now) - attendance.PunchInTime.Value;
+            }
 
             return Ok(new
             {
