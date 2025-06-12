@@ -2,14 +2,15 @@
 
 @{
     Layout = "~/Views/Shared/_Layout.cshtml";
-    var rCnt = 1;
 }
 
+<!-- FullCalendar & SweetAlert CSS/JS -->
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="container mt-4">
+    <!-- Filter controls -->
     <div class="d-flex justify-content-end mb-3">
         <button id="applyFilterBtn" class="btn btn-primary">Apply Filter</button>
         <select id="monthFilter" class="form-select w-auto mx-2">
@@ -27,6 +28,8 @@
             }
         </select>
     </div>
+
+    <!-- Calendar -->
     <div id="attendanceCalendar" style="margin-top: 20px;"></div>
 </div>
 
@@ -68,6 +71,7 @@
     </div>
 </div>
 
+<!-- JavaScript for Calendar and Filtering -->
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const calendarEl = document.getElementById('attendanceCalendar');
@@ -75,19 +79,28 @@
 
         @foreach (var item in Model)
         {
-                var status = item.PunchOutTime == null ? "Forgot to Punch Out" : item.TotalHours < 4 ? "Absent" : item.TotalHours < 8.5 ? "Half Day" : "Present";
+                var status = item.PunchOutTime == null ? "Forgot to Punch Out" :
+                                          item.TotalHours < 4 ? "Absent" :
+                                          item.TotalHours < 8.5 ? "Half Day" : "Present";
+
                 var title = $"{status} - {item.TotalHours} hrs ({item.WorkType})";
-                var color = item.PunchOutTime == null ? "#6c757d" : item.WorkType == "WFH" ? "#007bff" : item.WorkType == "WFO" ? "#28a745" : "#ffc107";
+                var color = item.PunchOutTime == null ? "#6c757d" :
+                                        item.TotalHours < 4 ? "#dc3545" :
+                                        item.TotalHours < 8.5 ? "#ffc107" :
+                                        item.WorkType == "WFO" ? "#28a745" : "#007bff";
+                var date = item.CreatedOn?.ToString("yyyy-MM-dd");
 
                 <text>
                 events.push({
-                    title: "@title",
-                    start: "@item.CreatedOn",
+                    title: "@Html.Raw(title)",
+                    start: "@date",
                     color: "@color",
                     extendedProps: {
                         punchIn: "@(item.PunchInTime?.ToString("HH:mm") ?? "-")",
                         punchOut: "@(item.PunchOutTime?.ToString("HH:mm") ?? "-")",
-                        workType: "@item.WorkType"
+                        workType: "@item.WorkType",
+                        lat: "@item.Latitude",
+                        lng: "@item.Longitude"
                     }
                 });
                 </text>
@@ -103,11 +116,18 @@
             },
             events: events,
             eventClick: function (info) {
+                const lat = info.event.extendedProps.lat;
+                const lng = info.event.extendedProps.lng;
+                const mapsLink = lat && lng
+                    ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">View Location</a>`
+                    : "Location not available";
+
                 Swal.fire({
                     title: info.event.title,
                     html: `<strong>Punch In:</strong> ${info.event.extendedProps.punchIn}<br>
                            <strong>Punch Out:</strong> ${info.event.extendedProps.punchOut}<br>
-                           <strong>Work Type:</strong> ${info.event.extendedProps.workType}`,
+                           <strong>Work Type:</strong> ${info.event.extendedProps.workType}<br>
+                           <strong>Location:</strong> ${mapsLink}`,
                     icon: 'info'
                 });
             },
@@ -123,7 +143,7 @@
             const month = $('#monthFilter').val();
             const year = $('#yearFilter').val();
             if (month && year) {
-                window.location.href = `/Home/GetAttendanceById?month=${month}&year=${year}`;
+                window.location.href = `/Home/GetAttendanceById?month=${month}&year=${year}&isCalendar=true`;
             } else {
                 alert("Please select both Month and Year.");
             }
@@ -161,6 +181,7 @@
     }
 </script>
 
+<!-- Calendar Styling -->
 <style>
     .fc-daygrid-event {
         font-size: 0.85em;

@@ -1,19 +1,25 @@
 ﻿@model List<AttendanceCRM.Models.DTOS.AttendanceViewModel>
 
-@foreach (var record in Model)
+@foreach (var item in Model)
 {
-    <tr>
-        <td>@record.UserId</td>
-        <td>@record.UserName</td>
-        <td>@(record.CreatedOn?.ToString("dd-MM-yyyy") ?? "-")</td>
-        <td>@record.Designation</td>
-        <td>@record.PunchInTime?.ToString("hh:mm tt")</td>
-        <td>@record.PunchOutTime?.ToString("hh:mm tt")</td>
-        <td>
-            @(record.GracePeriodTime >= 60
-                ? (record.GracePeriodTime / 60) + " hr" + (record.GracePeriodTime >= 120 ? "s" : "")
-                : record.GracePeriodTime + " mins")
-        </td>
-        <td>@(record.PunchInTime.HasValue ? "Present" : "Leave")</td>
-    </tr>
+    var status = item.PunchOutTime == null ? "Forgot to Punch Out" :
+                 item.TotalHours < 4 ? "Absent" :
+                 item.TotalHours < 8.5 ? "Half Day" : "Present";
+    var title = $"{status} - {item.TotalHours} hrs ({item.WorkType})";
+    var color = item.PunchOutTime == null ? "#6c757d" :
+                item.WorkType == "WFH" ? "#007bff" :
+                item.WorkType == "WFO" ? "#28a745" : "#ffc107";
+
+    <text>
+        events.push({
+        title: "@title",
+        start: "@item.PunchInTime?.ToString("yyyy-MM-dd")",
+        color: "@color",
+        extendedProps: {
+        punchIn: "@(item.PunchInTime?.ToString("HH:mm") ?? "-")",
+        punchOut: "@(item.PunchOutTime?.ToString("HH:mm") ?? "-")",
+        workType: "@item.WorkType"
+        }
+        });
+    </text>
 }

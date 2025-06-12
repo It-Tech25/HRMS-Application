@@ -36,6 +36,15 @@
         public string? UserName { get; set; }
     }
 
+    public class AttendanceViewDTO
+    {
+        public DateTime Date { get; set; }
+        public string WorkType { get; set; } // "WFO" or "WFH"
+        public string TimeSpent { get; set; } // e.g., "08:45:00"
+        public bool IsAbsent { get; set; }
+        public bool IsMissedPunchOut { get; set; }
+    }
+
     public class AttendanceViewModel
     {
         public int UserId { get; set; }
@@ -44,6 +53,7 @@
         public int TotalWorkingDays { get; set; }
         public int PresentDays { get; set; }
         public int AbsentDays { get; set; }
+        public int TotalHours { get; set; }
         public DateTime? PunchInTime { get; set; }
         public DateTime? PunchOutTime { get; set; }
         public string TotalWorkHours { get; set; } = "00:00:00";
