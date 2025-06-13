@@ -210,12 +210,15 @@
         }
     }
 
-    document.getElementById("punchOutBtn").addEventListener("click", function () {
-        localStorage.setItem("punchOutTime", new Date().toISOString());
-        localStorage.removeItem("punchInTime");
-        stopWorkHoursTimer();
-        managePunchButtons();
+     document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById("punchOutBtn").addEventListener("click", function () {
+            localStorage.setItem("punchOutTime", new Date().toISOString());
+            localStorage.removeItem("punchInTime");
+            stopWorkHoursTimer();
+            managePunchButtons();
+        });
     });
+
 
     function startPunch(action) {
         punchAction = action;
@@ -447,14 +450,23 @@
 
 
 <script>
-    let selectedWFHReason = "";
+        document.addEventListener('DOMContentLoaded', function() {
+           let selectedWFHReason = "";
 
     // Triggered when dropdown changes
-    document.getElementById("workType").addEventListener("change", function () {
-        if (this.value === "WFH") {
-            const wfhModal = new bootstrap.Modal(document.getElementById('wfhReasonModal'));
-            wfhModal.show();
-        }
+    const workTypeElement = document.getElementById("workType");
+    if (workTypeElement) {
+        workTypeElement.addEventListener("change", function () {
+            if (this.value === "WFH") {
+                const wfhModal = document.getElementById("wfhModal");
+                if (wfhModal) {
+                    wfhModal.showModal();
+                }
+            }
+        });
+    } else {
+        console.error("workType element not found");
+    }
     });
 
     // Called when "Continue" is clicked in WFH modal
