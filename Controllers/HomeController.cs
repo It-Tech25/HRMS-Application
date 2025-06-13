@@ -479,34 +479,21 @@ namespace AttendanceCRM.Controllers
 
         public List<AttendanceViewModel> GetAllEmployeesAttendanceRecords(string searchTerm = null)
         {
-            var attendanceData = (from a in _context.attendanceEntitie
-                                  join u in _context.userMasterEntitie on a.UserId equals u.UserId
-                                  where a.UserId != null
-                                  group a by new { a.UserId, u.UserName, u.Designation } into g
-                                  select new AttendanceViewModel
-                                  {
-                                      UserId = g.Key.UserId.Value,
-                                      UserName = g.Key.UserName,
-                                      Designation = g.Key.Designation,
-                                      TotalWorkingDays = g.Count(), // total attendance records
-                                      PresentDays = g.Count(x => x.PunchInTime != null), // only present if punched in
-                                      AbsentDays = g.Count(x => x.PunchInTime == null),
-                                      PunchInTime = g.Where(x => x.PunchInTime != null)
-                                                     .OrderByDescending(x => x.CreatedOn)
-                                                     .Select(x => x.PunchInTime)
-                                                     .FirstOrDefault(),
-                                      PunchOutTime = g.Where(x => x.PunchOutTime != null)
-                                                      .OrderByDescending(x => x.CreatedOn)
-                                                      .Select(x => x.PunchOutTime)
-                                                      .FirstOrDefault()
-                                  }).ToList();
-            if (!string.IsNullOrEmpty(searchTerm))
-            {
-                searchTerm = searchTerm.ToLower();
-                attendanceData = attendanceData
-                    .Where(x => (x.UserName ?? "").ToLower().Contains(searchTerm))
-                    .ToList();
-            }
+           var attendanceData = (
+    from a in _context.attendanceEntitie
+    join u in _context.userMasterEntitie on a.UserId equals u.UserId
+    where a.UserId != null
+    group a by new { a.UserId, u.UserName, u.Designation,u.Email } into g
+    select new AttendanceViewModel
+    {
+        UserId = g.Key.UserId.Value,
+        UserName = g.Key.UserName,
+        Designation = g.Key.Designation,
+        Email=g.Key.Email,
+       
+        
+    }).Distinct().ToList();
+
             return attendanceData.OrderByDescending(x => x.PunchInTime).ToList();
 
 
@@ -541,61 +528,76 @@ namespace AttendanceCRM.Controllers
 
         public ActionResult FilterAttendance(string filterType, string startDate, string endDate, int? userId)
             {
-            DateTime today = DateTime.Today;
-            DateTime start = DateTime.MinValue;
-            DateTime end = DateTime.MaxValue;
+            //DateTime today = DateTime.Today;
+            //DateTime start = DateTime.MinValue;
+            //DateTime end = DateTime.MaxValue;
 
-            // Determine the date range based on the selected filter
-            switch (filterType)
-            {
-                case "Daily":
-                    start = today;
-                    end = today.AddDays(1).AddSeconds(-1);
-                    break;
-                case "Weekly":
-                    start = today.AddDays(-(int)today.DayOfWeek); // Start of the week (Sunday)
-                    end = start.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59); // End of the week (Saturday)
-                    break;
-                case "Monthly":
-                    start = new DateTime(today.Year, today.Month, 1); // First day of the month
-                    end = start.AddMonths(1).AddSeconds(-1); // Last day of the month
-                    break;
-                case "Custom":
-                    if (DateTime.TryParse(startDate, out DateTime parsedStart) &&
-                        DateTime.TryParse(endDate, out DateTime parsedEnd))
-                    {
-                        start = parsedStart;
-                        end = parsedEnd.AddHours(23).AddMinutes(59).AddSeconds(59); // Include full day
-                    }
-                    break;
-            }
+            //// Determine the date range based on the selected filter
+            //switch (filterType)
+            //{
+            //    case "Daily":
+            //        start = today;
+            //        end = today.AddDays(1).AddSeconds(-1);
+            //        break;
+            //    case "Weekly":
+            //        start = today.AddDays(-(int)today.DayOfWeek); // Start of the week (Sunday)
+            //        end = start.AddDays(6).AddHours(23).AddMinutes(59).AddSeconds(59); // End of the week (Saturday)
+            //        break;
+            //    case "Monthly":
+            //        start = new DateTime(today.Year, today.Month, 1); // First day of the month
+            //        end = start.AddMonths(1).AddSeconds(-1); // Last day of the month
+            //        break;
+            //    case "Custom":
+            //        if (DateTime.TryParse(startDate, out DateTime parsedStart) &&
+            //            DateTime.TryParse(endDate, out DateTime parsedEnd))
+            //        {
+            //            start = parsedStart;
+            //            end = parsedEnd.AddHours(23).AddMinutes(59).AddSeconds(59); // Include full day
+            //        }
+            //        break;
+            //}
 
-            // Query attendance records based on the selected filter
-            var query = _context.attendanceEntitie
-             .Join(_context.userMasterEntitie, a => a.UserId, u => u.UserId, (a, u) => new { a, u })
-             .Where(x => x.a.PunchInTime >= start && x.a.PunchInTime <= end);
+            //// Query attendance records based on the selected filter
+            //var query = _context.attendanceEntitie
+            // .Join(_context.userMasterEntitie, a => a.UserId, u => u.UserId, (a, u) => new { a, u })
+            // .Where(x => x.a.PunchInTime >= start && x.a.PunchInTime <= end);
 
-            // Apply filter before materializing the list
-            if (userId.HasValue && userId > 0)
-            {
-                query = query.Where(x => x.a.UserId == userId.Value);
-            }
+            //// Apply filter before materializing the list
+            //if (userId.HasValue && userId > 0)
+            //{
+            //    query = query.Where(x => x.a.UserId == userId.Value);
+            //}
 
-            var records = query
-                .OrderBy(x => x.a.CreatedOn)
-                .Select(x => new AttendanceViewModel
-                {
-                    UserId = (int)x.a.UserId,
-                    UserName = x.u.UserName,
-                    CreatedOn = x.a.CreatedOn,
-                    PunchInTime = x.a.PunchInTime,
-                    PunchOutTime = x.a.PunchOutTime,
-                    GracePeriodTime = x.a.GracePeriodTime,
-                    Designation = x.u.Designation,
-                })
-                .ToList();
+            //var records = query
+            //    .OrderBy(x => x.a.CreatedOn)
+            //    .Select(x => new AttendanceViewModel
+            //    {
+            //        UserId = (int)x.a.UserId,
+            //        UserName = x.u.UserName,
+            //        CreatedOn = x.a.CreatedOn,
+            //        PunchInTime = x.a.PunchInTime,
+            //        PunchOutTime = x.a.PunchOutTime,
+            //        GracePeriodTime = x.a.GracePeriodTime,
+            //        Designation = x.u.Designation,
+            //    }).
+            //    Distinct().ToList();
+            var attendanceData = (
+  from a in _context.attendanceEntitie
+  join u in _context.userMasterEntitie on a.UserId equals u.UserId
+  where a.UserId != null
+  group a by new { a.UserId, u.UserName, u.Designation, u.Email } into g
+  select new AttendanceViewModel
+  {
+      UserId = g.Key.UserId.Value,
+      UserName = g.Key.UserName,
+      Designation = g.Key.Designation,
+      Email = g.Key.Email,
 
-            return PartialView("_AttendanceTable", records.ToList()); // Return partial view with updated data
+
+  }).Distinct().ToList();
+
+
+            return PartialView("_AttendanceTable", attendanceData.ToList()); // Return partial view with updated data
         }
 
         public IActionResult GetPunchDetails(string date)
@@ -764,6 +766,23 @@ namespace AttendanceCRM.Controllers
                 .Count(l => l.CreatedOn.HasValue && l.CreatedOn.Value.Date == DateTime.Today);
         }
 
+        [HttpGet]
+        public IActionResult GetSummaryCounts(int month, int year)
+        {
+            // Replace this with your actual logic
+            var result = new
+            {
+                TotalDays = DateTime.DaysInMonth(year, month),
+                PresentDays = 11,
+                WeeklyOffs = 8,
+                Leaves = 2,
+                Holidays = 1,
+                Absents = 8,
+                PaidDays = 22
+            };
+
+            return Json(result);
+        }
 
 
 

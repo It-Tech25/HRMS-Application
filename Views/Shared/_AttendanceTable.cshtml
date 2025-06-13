@@ -1,25 +1,17 @@
 ﻿@model List<AttendanceCRM.Models.DTOS.AttendanceViewModel>
 
-@foreach (var item in Model)
+@foreach (var record in Model)
 {
-    var status = item.PunchOutTime == null ? "Forgot to Punch Out" :
-                 item.TotalHours < 4 ? "Absent" :
-                 item.TotalHours < 8.5 ? "Half Day" : "Present";
-    var title = $"{status} - {item.TotalHours} hrs ({item.WorkType})";
-    var color = item.PunchOutTime == null ? "#6c757d" :
-                item.WorkType == "WFH" ? "#007bff" :
-                item.WorkType == "WFO" ? "#28a745" : "#ffc107";
-
-    <text>
-        events.push({
-        title: "@title",
-        start: "@item.PunchInTime?.ToString("yyyy-MM-dd")",
-        color: "@color",
-        extendedProps: {
-        punchIn: "@(item.PunchInTime?.ToString("HH:mm") ?? "-")",
-        punchOut: "@(item.PunchOutTime?.ToString("HH:mm") ?? "-")",
-        workType: "@item.WorkType"
-        }
-        });
-    </text>
+    <tr>
+        <td>@record.UserId</td>
+        <td>
+            <a href="#" class="employee-link"
+               data-userid="@record.UserId"
+               data-username="@record.UserName">
+                @record.UserName
+            </a>
+        </td>
+        <td>@record.Designation</td>
+        <td>@record.Email</td>
+</tr>
 }

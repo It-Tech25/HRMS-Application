@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="container mt-4">
-    <!-- Filter controls -->
+  @*   <!-- Filter controls -->
     <div class="d-flex justify-content-end mb-3">
         <button id="applyFilterBtn" class="btn btn-primary">Apply Filter</button>
         <select id="monthFilter" class="form-select w-auto mx-2">
@@ -28,7 +28,54 @@
             }
         </select>
     </div>
+ *@
+    <div class="row text-center mb-3" id="summaryTable">
+        <div class="col">Total Days: <span class="text-primary fw-bold" id="totalDays">--</span></div>
+        <div class="col">Physical Present Days: <span class="text-primary fw-bold" id="presentDays">--</span></div>
+        <div class="col">Weekly Offs: <span class="text-primary fw-bold" id="weeklyOffs">--</span></div>
+        <div class="col">Leaves: <span class="text-primary fw-bold" id="leaves">--</span></div>
+        <div class="col">Holidays: <span class="text-primary fw-bold" id="holidays">--</span></div>
+        <div class="col">Absents: <span class="text-primary fw-bold" id="absents">--</span></div>
+        <div class="col">Paid Days: <span class="text-primary fw-bold" id="paidDays">--</span></div>
+    </div>
 
+    <ul class="nav nav-tabs mb-3" id="calendarTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link active" id="details-tab" data-bs-toggle="tab" href="#details" role="tab">Details</a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="swipes-tab" data-bs-toggle="tab" href="#swipes" role="tab">Swipes</a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="leave-tab" href="@Url.Action("ApplyLeave", "Common")">Leave</a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="incident-tab" data-bs-toggle="tab" href="#incident" role="tab">Incident</a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="summary-tab" data-bs-toggle="tab" href="#summary" role="tab">Summary</a>
+        </li>
+    </ul>
+
+    <!-- Tab Content Area -->
+    <div class="tab-content" id="calendarTabContent">
+        <div class="tab-pane fade show active" id="details" role="tabpanel">
+            <!-- You can place content like calendar or details here -->
+            <div id="calendar"></div> <!-- Your existing FullCalendar goes here -->
+        </div>
+        <div class="tab-pane fade" id="swipes" role="tabpanel">
+            <p>Swipe data goes here.</p>
+        </div>
+        <div class="tab-pane fade" id="leave" role="tabpanel">
+            <p>Leave information goes here.</p>
+        </div>
+        <div class="tab-pane fade" id="incident" role="tabpanel">
+            <p>Incident information goes here.</p>
+        </div>
+        <div class="tab-pane fade" id="summary" role="tabpanel">
+            <p>Summary content goes here.</p>
+        </div>
+    </div>
     <!-- Calendar -->
     <div id="attendanceCalendar" style="margin-top: 20px;"></div>
 </div>
@@ -70,8 +117,36 @@
         </div>
     </div>
 </div>
+<script>
+    function loadSummary() {
+        var month = $('#monthFilter').val();
+        var year = $('#yearFilter').val();
 
-<!-- JavaScript for Calendar and Filtering -->
+        if (month && year) {
+            $.get('/Home/GetSummaryCounts', { month: month, year: year }, function (data) {
+                $('#totalDays').text(data.totalDays);
+                $('#presentDays').text(data.presentDays);
+                $('#weeklyOffs').text(data.weeklyOffs);
+                $('#leaves').text(data.leaves);
+                $('#holidays').text(data.holidays);
+                $('#absents').text(data.absents);
+                $('#paidDays').text(data.paidDays);
+            });
+        }
+    }
+
+    $(document).ready(function () {
+        // Initial load
+        loadSummary();
+
+        // Change handlers
+        $('#monthFilter, #yearFilter').change(function () {
+            loadSummary();
+        });
+    });
+</script>
+
+<!-- JavaScript -->
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const calendarEl = document.getElementById('attendanceCalendar');
@@ -98,9 +173,13 @@
                     extendedProps: {
                         punchIn: "@(item.PunchInTime?.ToString("HH:mm") ?? "-")",
                         punchOut: "@(item.PunchOutTime?.ToString("HH:mm") ?? "-")",
+                        punchInSelfie: "@item.SelfiePath",
+                        punchOutSelfie: "@item.PunchOutSelfiePath",
                         workType: "@item.WorkType",
                         lat: "@item.Latitude",
-                        lng: "@item.Longitude"
+                        lng: "@item.Longitude",
+                        punchOutLat: "@item.PunchOutLatitude",
+                        punchOutLng: "@item.PunchOutLongitude"
                     }
                 });
                 </text>
@@ -116,24 +195,40 @@
             },
             events: events,
             eventClick: function (info) {
-                const lat = info.event.extendedProps.lat;
-                const lng = info.event.extendedProps.lng;
-                const mapsLink = lat && lng
-                    ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">View Location</a>`
-                    : "Location not available";
+                const props = info.event.extendedProps;
 
                 Swal.fire({
                     title: info.event.title,
-                    html: `<strong>Punch In:</strong> ${info.event.extendedProps.punchIn}<br>
-                           <strong>Punch Out:</strong> ${info.event.extendedProps.punchOut}<br>
-                           <strong>Work Type:</strong> ${info.event.extendedProps.workType}<br>
-                           <strong>Location:</strong> ${mapsLink}`,
-                    icon: 'info'
+                    html: `<strong>Punch In:</strong> ${props.punchIn}<br>
+                           <strong>Punch Out:</strong> ${props.punchOut}<br>
+                           <strong>Work Type:</strong> ${props.workType}`,
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonText: 'View Location',
+                    cancelButtonText: 'Close'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        if (props.punchIn !== "-") {
+                            $('#punchInRow').show();
+                            $('#punchInSelfie').attr('src', props.punchInSelfie);
+                            $('#punchInTime').text(props.punchIn);
+                            $('#punchInMap').attr('src', `https://maps.google.com/maps?q=${props.lat},${props.lng}&hl=es;z=14&output=embed`);
+                        } else {
+                            $('#punchInRow').hide();
+                        }
+
+                        if (props.punchOut !== "-") {
+                            $('#punchOutRow').show();
+                            $('#punchOutSelfie').attr('src', props.punchOutSelfie);
+                            $('#punchOutTime').text(props.punchOut);
+                            $('#punchOutMap').attr('src', `https://maps.google.com/maps?q=${props.punchOutLat},${props.punchOutLng}&hl=es;z=14&output=embed`);
+                        } else {
+                            $('#punchOutRow').hide();
+                        }
+
+                        $('#punchInfoModal').modal('show');
+                    }
                 });
-            },
-            dateClick: function (info) {
-                $('#punchInfoModal').modal('show');
-                populatePunchDetails(info.dateStr);
             }
         });
 
@@ -149,36 +244,6 @@
             }
         });
     });
-
-    function populatePunchDetails(dateStr) {
-        $.ajax({
-            url: '/Home/GetPunchDetails',
-            type: 'GET',
-            data: { date: dateStr },
-            success: function (data) {
-                if (data.punchIn) {
-                    $('#punchInRow').show();
-                    $('#punchInSelfie').attr('src', data.punchIn.selfieUrl);
-                    $('#punchInTime').text(data.punchIn.time);
-                    $('#punchInMap').attr('src', `https://maps.google.com/maps?q=${data.punchIn.lat},${data.punchIn.lng}&hl=es;z=14&output=embed`);
-                } else {
-                    $('#punchInRow').hide();
-                }
-
-                if (data.punchOut) {
-                    $('#punchOutRow').show();
-                    $('#punchOutSelfie').attr('src', data.punchOut.selfieUrl);
-                    $('#punchOutTime').text(data.punchOut.time);
-                    $('#punchOutMap').attr('src', `https://maps.google.com/maps?q=${data.punchOut.lat},${data.punchOut.lng}&hl=es;z=14&output=embed`);
-                } else {
-                    $('#punchOutRow').hide();
-                }
-            },
-            error: function () {
-                alert('Failed to load punch details.');
-            }
-        });
-    }
 </script>
 
 <!-- Calendar Styling -->
