@@ -62,7 +62,13 @@ namespace AttendanceCRM.Controllers
 
             ViewBag.UserDetails = lr;
             ViewBag.UserId = lr.userId;
+            var today = DateTime.UtcNow.Date;
 
+            var punch = _context.attendanceEntitie
+                         .FirstOrDefault(p => p.UserId == lr.userId && p.CreatedOn == today);
+
+            ViewBag.PunchInTime = punch?.PunchInTime;
+            ViewBag.PunchOutTime = punch?.PunchOutTime;
             // Fetch user details
             var user = await _context.userMasterEntitie
                 .Where(u => u.UserId == lr.userId)
@@ -150,7 +156,7 @@ namespace AttendanceCRM.Controllers
             ViewBag.SelectedYear = selectedYear;
 
             // Calculate today's attendance hours
-            var today = DateTime.UtcNow.Date;
+         
             var todayAttendance = _context.attendanceEntitie
                 .Where(a => a.UserId == lr.userId && a.PunchInTime.Value.Date == today)
                 .ToList();
