@@ -2,7 +2,6 @@
 using AttendanceCRM.Models.DTOS;
 using AttendanceCRM.Models.Entities;
 using AttendanceCRM.Utilities;
-
 using System.Net.Mail;
 using PagedList.Core;
 using Microsoft.EntityFrameworkCore;
