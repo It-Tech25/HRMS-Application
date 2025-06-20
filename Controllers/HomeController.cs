@@ -21,12 +21,6 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 
-
-
-
-
-
-
 namespace AttendanceCRM.Controllers
 {
     public class HomeController : Controller
@@ -653,19 +647,119 @@ namespace AttendanceCRM.Controllers
 
             if (isCalendar)
             {
-                var events = data.Select(a => new
-                {
-                    title = a.PunchOutTime == null ? "Forgot to Punch Out"
-                        : a.TotalHours < 4 ? $"Time spent: {a.TotalHours:F2} [LOP]"
-                        : a.TotalHours < 8.5 ? $"Time spent: {a.TotalHours:F2} [Half Day]"
-                        : $"Time spent: {a.TotalHours:F2} [Full Day]",
+                var publicHolidays = new List<DateTime>
+{
+    new DateTime(2025, 1, 26), // Republic Day
+    new DateTime(2025, 8, 15), // Independence Day
+    new DateTime(2025, 10, 2), // Gandhi Jayanti
+    // Add your holidays here
+};
 
-                    start = a.PunchInTime?.ToString("yyyy-MM-dd"),
-                    color = a.PunchOutTime == null ? "#6c757d"
-                        : a.TotalHours < 4 ? "#dc3545"
-                        : a.TotalHours < 8.5 ? "#ffc107"
-                        : a.WorkType == "WFO" ? "#28a745" : "#007bff"
-                });
+                // Find the range from min to max date based on available PunchIn or PunchOut
+                var minDate = data.Min(d => d.PunchInTime?.Date ?? d.PunchOutTime?.Date) ?? DateTime.Today;
+                var maxDate = data.Max(d => d.PunchInTime?.Date ?? d.PunchOutTime?.Date) ?? DateTime.Today;
+
+                var allDates = Enumerable.Range(0, (maxDate - minDate).Days + 1)
+                    .Select(offset => minDate.AddDays(offset))
+                    .ToList();
+                var events = new List<object>();
+
+                foreach (var date in allDates)
+                {
+                    var attendance = data.FirstOrDefault(a =>
+                        (a.PunchInTime?.Date == date.Date) || (a.PunchOutTime?.Date == date.Date));
+
+                    if (attendance != null)
+                    {
+                        if (attendance.PunchInTime != null && attendance.PunchOutTime != null)
+                        {
+                            var totalHours = (attendance.PunchOutTime.Value - attendance.PunchInTime.Value).TotalHours;
+
+                            var title = totalHours <= 4
+                                ? $"Time spent: {totalHours:F2} [Half Day]"
+                                : totalHours < 8.5
+                                    ? $"Time spent: {totalHours:F2} [Half Day]"
+                                    : $"Time spent: {totalHours:F2} [Full Day]";
+
+                            var color = totalHours <= 4
+                                ? "#dc3545"
+                                : totalHours < 8.5
+                                    ? "#ffc107"
+                                    : attendance.WorkType == "WFO"
+                                        ? "#28a745"
+                                        : "#007bff";
+
+                            events.Add(new
+                            {
+                                title,
+                                start = date.ToString("yyyy-MM-dd"),
+                                color,
+                                extendedProps = new
+                                {
+                                    punchIn = attendance.PunchInTime?.ToString("HH:mm") ?? "-",
+                                    punchOut = attendance.PunchOutTime?.ToString("HH:mm") ?? "-",
+                                    punchInSelfie = attendance.SelfiePath,
+                                    punchOutSelfie = attendance.PunchOutSelfiePath,
+                                    workType = attendance.WorkType,
+                                    lat = attendance.Latitude,
+                                    lng = attendance.Longitude,
+                                    punchOutLat = attendance.PunchOutLatitude,
+                                    punchOutLng = attendance.PunchOutLongitude
+                                }
+                            });
+
+                            continue;
+                        }
+                        else if (attendance.PunchInTime != null && attendance.PunchOutTime == null)
+                        {
+                            events.Add(new
+                            {
+                                title = "Forgot to Punch Out",
+                                start = date.ToString("yyyy-MM-dd"),
+                                color = "#6c757d",
+                                extendedProps = new
+                                {
+                                    punchIn = attendance.PunchInTime?.ToString("HH:mm") ?? "-",
+                                    punchOut = "-",
+                                    punchInSelfie = attendance.SelfiePath,
+                                    punchOutSelfie = "",
+                                    workType = attendance.WorkType,
+                                    lat = attendance.Latitude,
+                                    lng = attendance.Longitude,
+                                    punchOutLat = "",
+                                    punchOutLng = ""
+                                }
+                            });
+
+                            continue;
+                        }
+                    }
+
+                    // Absent logic (if not holiday or weekend)
+                    if (date.DayOfWeek != DayOfWeek.Saturday &&
+                        date.DayOfWeek != DayOfWeek.Sunday &&
+                        !publicHolidays.Contains(date.Date))
+                    {
+                        events.Add(new
+                        {
+                            title = "Absent",
+                            start = date.ToString("yyyy-MM-dd"),
+                            color = "#dc3545",
+                            extendedProps = new
+                            {
+                                punchIn = "-",
+                                punchOut = "-",
+                                punchInSelfie = "",
+                                punchOutSelfie = "",
+                                workType = "",
+                                lat = "",
+                                lng = "",
+                                punchOutLat = "",
+                                punchOutLng = ""
+                            }
+                        });
+                    }
+                }
 
                 ViewBag.CalendarEvents = JsonConvert.SerializeObject(events);
             }
