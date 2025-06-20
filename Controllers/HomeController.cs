@@ -667,72 +667,50 @@ namespace AttendanceCRM.Controllers
                 foreach (var date in allDates)
                 {
                     var attendance = data.FirstOrDefault(a =>
-                        (a.PunchInTime?.Date == date.Date) || (a.PunchOutTime?.Date == date.Date));
+                        a.PunchInTime.HasValue && a.PunchInTime.Value.Date == date.Date);
 
                     if (attendance != null)
                     {
-                        if (attendance.PunchInTime != null && attendance.PunchOutTime != null)
+                        double totalHours = 0;
+                        if (attendance.PunchOutTime.HasValue)
                         {
-                            var totalHours = (attendance.PunchOutTime.Value - attendance.PunchInTime.Value).TotalHours;
-
-                            var title = totalHours <= 4
-                                ? $"Time spent: {totalHours:F2} [Half Day]"
-                                : totalHours < 8.5
-                                    ? $"Time spent: {totalHours:F2} [Half Day]"
-                                    : $"Time spent: {totalHours:F2} [Full Day]";
-
-                            var color = totalHours <= 4
-                                ? "#dc3545"
-                                : totalHours < 8.5
-                                    ? "#ffc107"
-                                    : attendance.WorkType == "WFO"
-                                        ? "#28a745"
-                                        : "#007bff";
-
-                            events.Add(new
-                            {
-                                title,
-                                start = date.ToString("yyyy-MM-dd"),
-                                color,
-                                extendedProps = new
-                                {
-                                    punchIn = attendance.PunchInTime?.ToString("HH:mm") ?? "-",
-                                    punchOut = attendance.PunchOutTime?.ToString("HH:mm") ?? "-",
-                                    punchInSelfie = attendance.SelfiePath,
-                                    punchOutSelfie = attendance.PunchOutSelfiePath,
-                                    workType = attendance.WorkType,
-                                    lat = attendance.Latitude,
-                                    lng = attendance.Longitude,
-                                    punchOutLat = attendance.PunchOutLatitude,
-                                    punchOutLng = attendance.PunchOutLongitude
-                                }
-                            });
-
-                            continue;
+                            totalHours = (attendance.PunchOutTime.Value - attendance.PunchInTime.Value).TotalHours;
                         }
-                        else if (attendance.PunchInTime != null && attendance.PunchOutTime == null)
+
+                        var status = attendance.PunchOutTime == null ? "Forgot to Punch Out" :
+                                     totalHours <= 4 ? "Half Day" :
+                                     totalHours < 8.5 ? "Half Day" :
+                                     "Full Day";
+
+                        var title = attendance.PunchOutTime == null
+                            ? "Forgot to Punch Out"
+                            : $"Time spent: {totalHours:F2} [{status}]";
+
+                        var color = attendance.PunchOutTime == null ? "#6c757d" :
+                                    totalHours <= 4 ? "#dc3545" :
+                                    totalHours < 8.5 ? "#ffc107" :
+                                    attendance.WorkType == "WFO" ? "#28a745" : "#007bff";
+
+                        events.Add(new
                         {
-                            events.Add(new
+                            title,
+                            start = date.ToString("yyyy-MM-dd"),
+                            color,
+                            extendedProps = new
                             {
-                                title = "Forgot to Punch Out",
-                                start = date.ToString("yyyy-MM-dd"),
-                                color = "#6c757d",
-                                extendedProps = new
-                                {
-                                    punchIn = attendance.PunchInTime?.ToString("HH:mm") ?? "-",
-                                    punchOut = "-",
-                                    punchInSelfie = attendance.SelfiePath,
-                                    punchOutSelfie = "",
-                                    workType = attendance.WorkType,
-                                    lat = attendance.Latitude,
-                                    lng = attendance.Longitude,
-                                    punchOutLat = "",
-                                    punchOutLng = ""
-                                }
-                            });
+                                punchIn = attendance.PunchInTime?.ToString("HH:mm") ?? "-",
+                                punchOut = attendance.PunchOutTime?.ToString("HH:mm") ?? "-",
+                                punchInSelfie = attendance.SelfiePath ?? "",
+                                punchOutSelfie = attendance.PunchOutSelfiePath ?? "",
+                                workType = attendance.WorkType ?? "",
+                                lat = attendance.Latitude ,
+                                lng = attendance.Longitude,
+                                punchOutLat = attendance.PunchOutLatitude,
+                                punchOutLng = attendance.PunchOutLongitude
+                            }
+                        });
 
-                            continue;
-                        }
+                        continue;
                     }
 
                     // Absent logic (if not holiday or weekend)
